@@ -1,0 +1,1137 @@
+Settings:
+  num_at_once: 10000 # количество сообщений обрабатываемых за один запуск
+
+# Типы сообщений
+# Реакции:
+#
+# resend: # повторить отправку
+#   time: 24 # через сколько часов перепослать
+#   count: 3 # число попыток (включая первоначальную отправку? потом удалится письмо? останется запись в истории? повторная отправка произойдет после очередной обработки этого же отлупа?)
+#
+# alert: # известить админа
+#   email: # по какому адресу извещать
+#
+# mark: # пометить адрес как несуществующий
+#   status: ABSENT # какой статус присвоить адресу (какие статусы?)
+#
+# confirm: # кликнуть по ссылке в письме
+#   link_num: 1 # номер ссылки по порядку в тексте письма
+#
+# delete: # удалить письмо
+
+
+# ВОПРОСЫ
+
+# Когда можно неактивный адрес (ABSENT, INACTIVE) снова делать активным? (ситуации: импорт, подписка)
+# Когда можно временно проблемный адрес (FULL, SERVICE_ERROR) помечать нормальным? (ситуации: обычная отправка)
+# Когда можно помечать неактивным/проблемным целое почтовое направление? (почтовый домен)
+# В будущем наверняка появятся новые тексты ошибок, как можно периодически проверять отлупы, не подошедшие ни под одно из правил, и создавать из них новые правила или корректировать старые?
+# Письмо удалять нужно только из очереди, а в истории должна остаться пометка об удалении этого письма, чтобы показать автору статистику (сколько отправлено, сколько с временной ошибкой, сколько с постоянной, сколько заблокировано, сколько открыло)
+
+# При обнаружении блокировки антиспамом уведомляем админа и удаляем письмо, а где дальше админ сможет работать с этим письмом?
+# Блокировок иногда может быть очень много, нужно уведомлять админа не по каждому письму, а присылать какой-то итог работы скрипта
+
+# В админке нужна статистика обработки отлупов по их типам
+
+# Тип dns_loop означает проблему с нашим DNS? (если нет, то перенести в INACTIVE)
+
+
+
+Types:
+
+# Блокировка антиспам-службами
+
+  antispam:
+    actions:
+#      resend:
+#        time: 48
+#        count: 1
+      alert:
+        email: notification@profi-post.org
+      delete:
+
+
+# Постоянные проблемы с адресом
+
+  user_unknown:
+    actions:
+      mark:
+        status: ABSENT
+      delete:
+
+  dns_unknown:
+    actions:
+      mark:
+        status: ABSENT
+      delete:
+
+  dns_loop:
+    actions:
+      mark:
+        status: INACTIVE
+      delete:
+
+  user_inactive:
+    actions:
+      mark:
+        status: INACTIVE
+      delete:
+
+  internal_perm_error:
+    actions:
+      mark:
+        status: INACTIVE
+      delete:
+
+  latin_only:
+    actions:
+      mark:
+        status: INACTIVE
+      delete:
+
+
+# Временные проблемы с адресом
+
+  mailbox_full:
+    actions:
+      resend:
+        time: 12
+        count: 2
+      mark:
+        status: FULL
+      delete:
+
+  oversize:
+    actions:
+      mark:
+        status: FULL
+      delete:
+
+  internal_temp_error:
+    actions:
+      resend:
+        time: 24
+        count: 1
+      mark:
+        status: SERVICE_ERROR
+      delete:
+
+  defer:
+    actions:
+      resend:
+        time: 12
+        count: 1
+      mark:
+        status: SERVICE_ERROR
+      delete:
+
+  delayed:
+    actions:
+      resend:
+        time: 12
+        count: 1
+      mark:
+        status: SERVICE_ERROR
+      delete:
+
+
+# Прочие ситуации
+
+  user_reject:
+    actions:
+      mark:
+        status: SEND_BLOCKED
+      delete:
+
+  command_reject:
+    actions:
+      # Возможно, это проблема с нашей почтовой службой, надо проверить
+      alert:
+        email: notification@profi-post.org
+      mark:
+        status: SEND_BLOCKED
+      delete:
+
+  content_reject:
+    actions:
+      # Возможно, это проблема с нашей почтовой службой, надо проверить
+      alert:
+        email: notification@profi-post.org
+      delete:
+
+  autoreply:
+    actions:
+      delete:
+
+  other:
+    actions:
+      delete:
+
+
+Rules:
+  r1000:
+    type: user_unknown
+    tpl: "/(\S+@\S+\w).*\n?.*no such address here/i"
+    actions:
+    # sample:
+    # xxxxx@yourdomain.com
+    # no such address here
+
+  r1001:
+    type: user_unknown
+    tpl: "/<(\S+@\S+\w)>.*\n?.*\n?.*user unknown/i"
+    # <xxxxx@yourdomain.com>:
+    # 111.111.111.111 does not like recipient.
+    # Remote host said: 550 User unknown
+
+  r1002:
+    type: user_unknown
+    tpl: "/<(\S+@\S+\w)>.*\n?.*no mailbox/i"
+    # sample:
+    # <xxxxx@yourdomain.com>:
+    # Sorry, no mailbox here by that name. vpopmail (#5.1.1)
+
+  r1003:
+    type: user_unknown
+    tpl: "/(\S+@\S+\w)<br>.*\n?.*\n?.*can't find.*mailbox/i"
+    # sample:
+    # xxxxx@yourdomain.com<br>
+    # local: Sorry, can't find user's mailbox. (#5.1.1)<br>
+
+  r1004:
+    type: user_unknown
+    tpl: "/Can't create output.*\n?.*<(\S+@\S+\w)>/i"
+    # sample:
+    #     ##########################################################
+    #     #  This is an automated response from a mail delivery    #
+    #     #  program.  Your message could not be delivered to      #
+    #     #  the following address:                                #
+    #     #                                                        #
+    #     #      "|/usr/local/bin/mailfilt -u #dkms"               #
+    #     #        (reason: Can't create output)                   #
+    #     #        (expanded from: <xxxxx@yourdomain.com>)         #
+    #     #                                                        #
+
+  r1005:
+    type: user_unknown
+    tpl: "/(\S+@\S+\w).*=D5=CA=BA=C5=B2=BB=B4=E6=D4=DA/i"
+    # sample:
+    # ????????????????:
+    # xxxxx@yourdomain.com : ????, ?????.
+
+  r1006:
+    type: user_unknown
+    tpl: "/(\S+@\S+\w).*\n?.*Unrouteable address/i"
+    # sample:
+    # xxxxx@yourdomain.com
+    # Unrouteable address
+
+  r1007:
+    type: user_unknown
+    tpl: "/delivery[^\n\r]+failed\S*\s+(\S+@\S+\w)\s/is"
+    # sample:
+    # Delivery to the following recipients failed.
+    # xxxxx@yourdomain.com
+
+  r1008:
+    type: user_unknown
+    tpl: "/(\S+@\S+\w).*\n?.*unknown local-part/i"
+    # sample:
+    # A message that you sent could not be delivered to one or more of its^M
+    # recipients. This is a permanent error. The following address(es) failed:^M
+    # ^M
+    # xxxxx@yourdomain.com^M
+    # unknown local-part "xxxxx" in domain "yourdomain.com"^M
+
+  r1009:
+    type: user_unknown
+    tpl: "/Invalid.*(?:alias|account|recipient|address|email|mailbox|user).*<(\S+@\S+\w)>/i"
+    # sample:
+    # <xxxxx@yourdomain.com>:^M
+    # 111.111.111.11 does not like recipient.^M
+    # Remote host said: 550 Invalid recipient: <xxxxx@yourdomain.com>^M
+
+  r1010:
+    type: user_unknown
+    tpl: "/\s(\S+@\S+\w).*No such.*(?:alias|account|recipient|address|email|mailbox|user)>/i"
+    # sample:
+    # Sent >>> RCPT TO: <xxxxx@yourdomain.com>^M
+    # Received <<< 550 xxxxx@yourdomain.com... No such user^M
+    # ^M
+    # Could not deliver mail to this user.^M
+    # xxxxx@yourdomain.com^M
+    # *****************     End of message     ***************^M
+
+  r1011:
+    type: user_unknown
+    tpl: "/<(\S+@\S+\w)>.*\n?.*(?:alias|account|recipient|address|email|mailbox|user).*no.*accept.*mail>/i"
+    # sample:
+    # <xxxxx@yourdomain.com>:^M
+    # This address no longer accepts mail.
+
+  r1012:
+    type: mailbox_full
+    tpl: "/<(\S+@\S+\w)>.*\n?.*\n?.*over.*quota/i"
+    # sample 1:
+    # <xxxxx@yourdomain.com>:
+    # This account is over quota and unable to receive mail.
+    # sample 2:
+    # <xxxxx@yourdomain.com>:
+    # Warning: undefined mail delivery mode: normal (ignored).
+    # The users mailfolder is over the allowed quota (size). (#5.2.2)
+
+  r1013:
+    type: mailbox_full
+    tpl: "/quota exceeded.*\n?.*<(\S+@\S+\w)>/i"
+    # sample:
+    #   ----- Transcript of session follows -----
+    # mail.local: /var/mail/2b/10/kellen.lee: Disc quota exceeded
+    # 554 <xxxxx@yourdomain.com>... Service unavailable
+
+  r1014:
+    type: mailbox_full
+    tpl: "/<(\S+@\S+\w)>.*\n?.*quota exceeded/i"
+    # sample:
+    # Hi. This is the qmail-send program at 263.domain.com.
+    # <xxxxx@yourdomain.com>:
+    # - User disk quota exceeded. (#4.3.0)
+
+  r1015:
+    type: mailbox_full
+    tpl: "/\s(\S+@\S+\w)\s.*\n?.*mailbox.*full/i"
+    # sample:
+    # xxxxx@yourdomain.com
+    # mailbox is full (MTA-imposed quota exceeded while writing to file /mbx201/mbx011/A100/09/35/A1000935772/mail/.inbox):
+
+  r1016:
+    type: mailbox_full
+    tpl: "/The message to (\S+@\S+\w)\s.*bounce.*Quota exceed/i"
+    # sample:
+    # The message to xxxxx@yourdomain.com is bounced because : Quota exceed the hard limit
+
+  r1017:
+    type: user_inactive
+    tpl: "/(\S+@\S+\w)<br>.*\n?.*\n?.*user is inactive/i"
+    # sample:
+    # xxxxx@yourdomain.com<br>
+    # 553 user is inactive (eyou mta)
+
+  r1018:
+    type: user_inactive
+    tpl: "/(\S+@\S+\w).*inactive account/i"
+    # sample:
+    # xxxxx@yourdomain.com [Inactive account]
+
+  r1019:
+    type: internal_temp_error
+    tpl: "/<(\S+@\S+\w)>.*\n?.*input\/output error/i"
+    # sample:
+    # <xxxxx@yourdomain.com>:
+    # Unable to switch to /var/vpopmail/domains/domain.com: input/output error. (#4.3.0)
+
+  r1020:
+    type: internal_temp_error
+    tpl: "/<(\S+@\S+\w)>.*\n?.*can not open new email file/i"
+    # sample:
+    # <xxxxx@yourdomain.com>:
+    # can not open new email file errno=13 file=/home/vpopmail/domains/fromc.com/0/domain/Maildir/tmp/1155254417.28358.mx05,S=212350
+
+  r1021:
+    type: defer
+    tpl: "/<(\S+@\S+\w)>.*\n?.*\n?.*Resources temporarily unavailable/i"
+    # sample:
+    # <xxxxx@yourdomain.com>:
+    # 111.111.111.111 failed after I sent the message.
+    # Remote host said: 451 mta283.mail.scd.yahoo.com Resources temporarily unavailable. Please try again later [#4.16.5].
+
+  r1022:
+    type: autoreply
+    tpl: "/^AutoReply message from (\S+@\S+\w)/i"
+    # sample:
+    # AutoReply message from xxxxx@yourdomain.com
+
+  r1023:
+    type: latin_only
+    tpl: "/<(\S+@\S+\w)>.*\n?.*does not accept[^\r\n]*non-Western/i"
+    # sample:
+    # <xxxxx@yourdomain.com>:
+    # The user does not accept email in non-Western (non-Latin) character sets.
+
+  r1024:
+    type: user_unknown
+    tpl: "/(\S+@\S+\w).*\n?.*user not found/i"
+    # 550 Message was not accepted -- invalid mailbox. Local mailbox xxxxx@yourdomain.com is unavailable: user not found
+
+  r1025:
+    type: user_unknown
+    tpl: "/(\S+@\S+\w) is unavailable/i"
+    # 550 Message was not accepted -- invalid mailbox. Local mailbox xxxxx@yourdomain.com is unavailable: user not found
+
+  r2001:
+    type: mailbox_full
+    tpl: "/over.*quota/is"
+    # sample:
+    # Diagnostic-Code: X-Postfix; me.domain.com platform: said: 552 5.2.2 Over
+    #   quota (in reply to RCPT TO command)
+
+  r2002:
+    type: mailbox_full
+    tpl: "/exceed.*quota/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 552 Requested mailbox exceeds quota.
+
+  r2003:
+    type: mailbox_full
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*full/is"
+    # sample 1:
+    # Diagnostic-Code: smtp;552 5.2.2 This message is larger than the current system limit or the recipient's mailbox is full.
+    # Create a shorter message body or remove attachments and try sending it again.
+    # sample 2:
+    # Diagnostic-Code: X-Postfix; host mta5.us4.domain.com.int[111.111.111.111] said:
+    #   552 recipient storage full, try again later (in reply to RCPT TO command)
+    # sample 3:
+    # Diagnostic-Code: X-HERMES; host 127.0.0.1[127.0.0.1] said: 551 bounce as<the
+    #   destination mailbox <xxxxx@yourdomain.com> is full> queue as
+    #   100.1.ZmxEL.720k.1140313037.xxxxx@yourdomain.com (in reply to end of
+    #   DATA command)
+  r2004:
+    type: mailbox_full
+    tpl: "/Insufficient system storage/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 452 Insufficient system storage
+
+  r2005:
+    type: mailbox_full
+    tpl: "/File too large/is"
+    # sample 1:
+    # Diagnostic-Code: X-Postfix; cannot append message to destination file^M
+    #   /var/mail/dale.me89g: error writing message: File too large^M
+    # sample 2:
+    # Diagnostic-Code: X-Postfix; cannot access mailbox /var/spool/mail/b8843022 for^M
+    #   user xxxxx. error writing message: File too large
+
+  r2006:
+    type: oversize
+    tpl: "/larger than.*limit/is"
+    # sample:
+    # Diagnostic-Code: smtp;552 5.2.2 This message is larger than the current system limit or the recipient's mailbox is full.
+    # Create a shorter message body or remove attachments and try sending it again.
+
+  r2007:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user)(.*)not(.*)list/is"
+    # sample:
+    # Diagnostic-Code: X-Notes; User xxxxx (xxxxx@yourdomain.com) not listed in public Name & Address Book
+
+  r2008:
+    type: user_unknown
+    tpl: "/user path no exist/is"
+    # sample:
+    # Diagnostic-Code: smtp; 450 user path no exist
+
+  r2009:
+    type: user_inactive
+    tpl: "/Relay.*(?:denied|prohibited)/is"
+    # sample 1:
+    # Diagnostic-Code: SMTP; 550 Relaying denied.
+    # sample 2:
+    # Diagnostic-Code: SMTP; 554 <xxxxx@yourdomain.com>: Relay access denied
+    # sample 3:
+    # Diagnostic-Code: SMTP; 550 relaying to <xxxxx@yourdomain.com> prohibited by administrator
+
+  r2010:
+    type: user_unknown
+    tpl: "/no.*valid.*(?:alias|account|recipient|address|email|mailbox|user)/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 qq Sorry, no valid recipients (#5.1.3)
+
+  r2011:
+    type: user_unknown
+    tpl: "/Invalid.*(?:alias|account|recipient|address|email|mailbox|user)/is"
+    # sample 1:
+    # Diagnostic-Code: SMTP; 550 «D?k¦a§} - invalid address (#5.5.0)
+    # sample 2:
+    # Diagnostic-Code: SMTP; 550 Invalid recipient: <xxxxx@yourdomain.com>
+    # sample 3:
+    # Diagnostic-Code: SMTP; 550 <xxxxx@yourdomain.com>: Invalid User
+
+  r2012:
+    type: user_inactive
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*(?:disabled|discontinued)/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 delivery error: dd Sorry your message to xxxxx@yourdomain.com cannot be delivered.
+    # This account has been disabled or discontinued [#102]. - mta173.mail.tpe.domain.com
+
+  r2013:
+    type: user_unknown
+    tpl: "/user doesn't have.*account/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 delivery error: dd This user doesn't have a domain.com account (www.xxxxx@yourdomain.com) [0] - mta134.mail.tpe.domain.com
+
+  r2014:
+    type: user_unknown
+    tpl: "/(?:unknown|illegal).*(?:alias|account|recipient|address|email|mailbox|user)/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 5.1.1 unknown or illegal alias: xxxxx@yourdomain.com
+
+  r2015:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*(?:un|not\s+)available/is"
+    # sample 1:
+    # Diagnostic-Code: SMTP; 450 mailbox unavailable.
+    # sample 2:
+    # Diagnostic-Code: SMTP; 550 5.7.1 Requested action not taken: mailbox not available
+
+  r2016:
+    type: user_unknown
+    tpl: "/no (?:alias|account|recipient|address|email|mailbox|user)/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 sorry, no mailbox here by that name (#5.7.1)
+
+  r2017:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*unknown/is"
+    # sample 1:
+    # Diagnostic-Code: SMTP; 550 User (xxxxx@yourdomain.com) unknown.
+    # sample 2:
+    # Diagnostic-Code: SMTP; 553 5.3.0 <xxxxx@yourdomain.com>... Addressee unknown, relay=[111.111.111.000]
+
+  r2018:
+    type: user_inactive
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*disabled/is"
+    # sample 1:
+    # Diagnostic-Code: SMTP; 550 user disabled
+    # sample 2:
+    # Diagnostic-Code: SMTP; 452 4.2.1 mailbox temporarily disabled: xxxxx@yourdomain.com
+
+  r2019:
+    type: user_unknown
+    tpl: "/No such (?:alias|account|recipient|address|email|mailbox|user)/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 <xxxxx@yourdomain.com>: Recipient address rejected: No such user (xxxxx@yourdomain.com)
+
+  r2020:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*NOT FOUND/is"
+    # sample 1:
+    # Diagnostic-Code: SMTP; 550 MAILBOX NOT FOUND
+    # sample 2:
+    # Diagnostic-Code: SMTP; 550 Mailbox ( xxxxx@yourdomain.com ) not found or inactivated
+
+  r2021:
+    type: user_inactive
+    tpl: "/deactivated (?:alias|account|recipient|address|email|mailbox|user)/is"
+    # sample:
+    # Diagnostic-Code: X-Postfix; host m2w-in1.domain.com[111.111.111.000] said: 551
+    # <xxxxx@yourdomain.com> is a deactivated mailbox (in reply to RCPT TO
+    # command)
+
+  r2022:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*reject/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 <xxxxx@yourdomain.com> recipient rejected
+    # ...
+    # <<< 550 <xxxxx@yourdomain.com> recipient rejected
+    # 550 5.1.1 xxxxx@yourdomain.com... User unknown
+
+  r2023:
+    type: user_inactive
+    tpl: "/bounce.*administrator/is"
+    # sample:
+    # Diagnostic-Code: smtp; 5.x.0 - Message bounced by administrator  (delivery attempts: 0)
+
+  r2024:
+    type: user_inactive
+    tpl: "/<.*>.*disabled/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 <maxqin> is now disabled with MTA service.
+
+  r2025:
+    type: user_unknown
+    tpl: "/not our customer/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 551 not our customer
+
+  r2026:
+    type: user_unknown
+    tpl: "/Wrong (?:alias|account|recipient|address|email|mailbox|user)/is"
+    # sample:
+    # Diagnostic-Code: smtp; 5.1.0 - Unknown address error 540-'Error: Wrong recipients' (delivery attempts: 0)
+
+  r2027:
+    type: user_unknown
+    tpl: "/(?:unknown|bad).*(?:alias|account|recipient|address|email|mailbox|user)/is"
+    # sample:
+    # Diagnostic-Code: smtp; 5.1.0 - Unknown address error 540-'Error: Wrong recipients' (delivery attempts: 0)
+    # sample 2:
+    # Diagnostic-Code: SMTP; 501 #5.1.1 bad address xxxxx@yourdomain.com
+
+  r2028:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*not OK/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 Command RCPT User <xxxxx@yourdomain.com> not OK
+
+  r2029:
+    type: user_inactive
+    tpl: "/Access.*Denied/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 5.7.1 Access-Denied-XM.SSR-001
+
+  r2030:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*lookup.*fail/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 5.1.1 <xxxxx@yourdomain.com>... email address lookup in domain map failed^M
+
+  r2031:
+    type: user_unknown
+    tpl: "/(?:recipient|address|email|mailbox|user).*not.*member of domain/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 User not a member of domain: <xxxxx@yourdomain.com>^M
+
+  r2032:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*cannot be verified/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550-"The recipient cannot be verified.  Please check all recipients of this^M
+
+  r2033:
+    type: user_unknown
+    tpl: "/Unable to relay/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 Unable to relay for xxxxx@yourdomain.com
+
+  r2034:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*(?:n't|not) exist/is"
+    # sample 1:
+    # Diagnostic-Code: SMTP; 550 xxxxx@yourdomain.com:user not exist
+    # sample 2:
+    # Diagnostic-Code: SMTP; 550 sorry, that recipient doesn't exist (#5.7.1)
+
+  r2035:
+    type: user_unknown
+    tpl: "/not have an account/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550-I'm sorry but xxxxx@yourdomain.com does not have an account here. I will not
+
+  r2036:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*is not allowed/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 This account is not allowed...xxxxx@yourdomain.com
+
+  r2037:
+    type: user_inactive
+    tpl: "/inactive.*(?:alias|account|recipient|address|email|mailbox|user)/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 <xxxxx@yourdomain.com>: inactive user
+
+  r2038:
+    type: user_inactive
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*Inactive/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 xxxxx@yourdomain.com Account Inactive
+
+  r2039:
+    type: user_inactive
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user) closed due to inactivity/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 <xxxxx@yourdomain.com>: Recipient address rejected: Account closed due to inactivity. No forwarding information is available.
+
+  r2040:
+    type: user_inactive
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user) not activated/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 <xxxxx@yourdomain.com>... User account not activated
+
+  r2041:
+    type: user_inactive
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*(?:suspend|expire)/is"
+    # sample 1:
+    # Diagnostic-Code: SMTP; 550 User suspended
+    # sample 2:
+    # Diagnostic-Code: SMTP; 550 account expired
+
+  r2042:
+    type: user_inactive
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*no longer exist/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 5.3.0 <xxxxx@yourdomain.com>... Recipient address no longer exists
+
+  r2043:
+    type: user_inactive
+    tpl: "/(?:forgery|abuse)/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 VS10-RT Possible forgery or deactivated due to abuse (#5.1.1) 111.111.111.211^M
+
+  r2044:
+    type: user_inactive
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*restrict/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 mailbox xxxxx@yourdomain.com is restricted
+
+  r2045:
+    type: user_inactive
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*locked/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 <xxxxx@yourdomain.com>: User status is locked.
+
+  r2046:
+    type: user_reject
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user) refused/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 User refused to receive this mail.
+
+  r2047:
+    type: user_reject
+    tpl: "/sender.*not/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 501 xxxxx@yourdomain.com Sender email is not in my domain
+
+  r2048:
+    type: command_reject
+    tpl: "/Message refused/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 Message refused
+
+  r2049:
+    type: command_reject
+    tpl: "/No permit/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 5.0.0 <xxxxx@yourdomain.com>... No permit
+
+  r2050:
+    type: command_reject
+    tpl: "/domain isn't in.*allowed rcpthost/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 sorry, that domain isn't in my list of allowed rcpthosts (#5.5.3 - chkuser)
+
+  r2051:
+    type: command_reject
+    tpl: "/AUTH FAILED/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 AUTH FAILED - xxxxx@yourdomain.com^M
+
+  r2052:
+    type: command_reject
+    tpl: "/relay.*not.*(?:permit|allow)/is"
+    # sample 1:
+    # Diagnostic-Code: SMTP; 550 relay not permitted^M
+    # sample 2:
+    # Diagnostic-Code: SMTP; 530 5.7.1 Relaying not allowed: xxxxx@yourdomain.com
+
+  r2053:
+    type: command_reject
+    tpl: "/not local host/is"
+    # sample:
+    #
+    # Diagnostic-Code: SMTP; 550 not local host domain.com, not a gateway
+
+  r2054:
+    type: command_reject
+    tpl: "/Unauthorized relay/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 500 Unauthorized relay msg rejected
+
+  r2055:
+    type: command_reject
+    tpl: "/Transaction.*fail/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 Transaction failed
+
+  r2056:
+    type: command_reject
+    tpl: "/Invalid data/is"
+    # sample:
+    # Diagnostic-Code: smtp;554 5.5.2 Invalid data in message
+
+  r2057:
+    type: command_reject
+    tpl: "/Local user only/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 Local user only or Authentication mechanism
+
+  r2058:
+    type: command_reject
+    tpl: "/not.*permit.*to/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550-ds176.domain.com [111.111.111.211] is currently not permitted to
+    # relay through this server. Perhaps you have not logged into the pop/imap
+    # server in the last 30 minutes or do not have SMTP Authentication turned on
+    # in your email client.
+
+  r2059:
+    type: content_reject
+    tpl: "/Content reject/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 Content reject. FAAAANsG60M9BmDT.1
+
+  r2060:
+    type: content_reject
+    tpl: "/MIME\/REJECT/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 552 MessageWall: MIME/REJECT: Invalid structure
+
+  r2061:
+    type: content_reject
+    tpl: "/MIME error/is"
+    # sample:
+    # Diagnostic-Code: smtp; 554 5.6.0 Message with invalid header rejected, id=13462-01 -
+    # MIME error: error: UnexpectedBound: part didn't end with expected boundary [in multipart message]; EOSToken: EOF; EOSType: EOF
+
+  r2062:
+    type: content_reject
+    tpl: "/Mail data refused.*AISP/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 Mail data refused by AISP, rule [169648].
+
+  r2063:
+    type: dns_unknown
+    tpl:  "/Host unknown/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 Host unknown
+
+  r2064:
+    type: dns_unknown
+    tpl:  "/Specified domain.*not.*allow/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 Specified domain is not allowed.
+
+  r2065:
+    type: dns_unknown
+    tpl:  "/No route to host/is"
+    # sample:
+    # Diagnostic-Code: X-Postfix; delivery temporarily suspended: connect to
+    # 111.111.11.112[111.111.11.112]: No route to host
+
+  r2066:
+    type: dns_unknown
+    tpl: "/unrouteable address/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 unrouteable address
+
+  r2067:
+    type: defer
+    tpl: "/System.*busy/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 451 System(u) busy, try again later.
+
+  r2068:
+    type: defer
+    tpl: "/Resources temporarily unavailable/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 451 mta172.mail.tpe.domain.com Resources temporarily unavailable. Please try again later.  [#4.16.4:70].
+
+  r2069:
+    type: antispam
+    tpl: "/sender is rejected/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 sender is rejected: 0,mx20,wKjR5bDrnoM2yNtEZVAkBg==.32467S2
+
+  r2070:
+    type: antispam
+    tpl: "/Client host rejected/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 <unknown[111.111.111.000]>: Client host rejected: Access denied
+
+  r2071:
+    type: antispam
+    tpl: "/MAIL FROM(.*)mismatches client IP/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 Connection refused(mx). MAIL FROM [xxxxx@yourdomain.com] mismatches client IP [111.111.111.000].
+
+  r2072:
+    type: antispam
+    tpl: "/denyip/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 Please visit http:// antispam.domain.com/denyip.php?IP=111.111.111.000 (#5.7.1)
+
+  r2073:
+    type: antispam
+    tpl: "/client host.*blocked/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 Service unavailable; Client host [111.111.111.211] blocked using dynablock.domain.com;
+    # Your message could not be delivered due to complaints we received regarding the
+    # IP address you're using or your ISP. See http:// blackholes.domain.com/ Error: WS-02^M
+
+  r2074:
+    type: antispam
+    tpl: "/mail.*reject/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 Requested action not taken: mail IsCNAPF76kMDARUY.56621S2 is rejected,mx3,BM
+
+  r2075:
+    type: antispam
+    tpl: "/spam.*detect/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 552 sorry, the spam message is detected (#5.6.0)
+
+  r2076:
+    type: antispam
+    tpl: "/reject.*spam/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 5.7.1 Rejected as Spam see: http:// rejected.domain.com/help/spam/rejected.html
+
+  r2077:
+    type: antispam
+    tpl: "/SpamTrap/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 5.7.1 <xxxxx@yourdomain.com>... SpamTrap=reject mode, dsn=5.7.1,
+    # Message blocked by BOX Solutions (www.domain.com) SpamTrap Technology,
+    # please contact the domain.com site manager for help: (ctlusr8012).^M
+
+  r2078:
+    type: antispam
+    tpl: "/Verify mailfrom failed/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 Verify mailfrom failed,blocked
+
+  r2079:
+    type: antispam
+    tpl: "/MAIL.*FROM.*mismatch/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 Error: MAIL FROM is mismatched with message header from address!
+
+  r2080:
+    type: antispam
+    tpl: "/spam scale/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 5.7.1 Message scored too high on spam scale.  For help, please quote incident ID 22492290.
+
+  r2081:
+    type: antispam
+    tpl: "/Client host bypass/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 5.7.1 reject: Client host bypassing service provider's mail relay: ds176.domain.com
+
+  r2082:
+    type: antispam
+    tpl: "/junk mail/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 550 sorry, it seems as a junk mail
+
+  r2083:
+    type: antispam
+    tpl: "/message filtered/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553-Message filtered. Please see the FAQs section on spam
+
+  r2084:
+    type: antispam
+    tpl: "/subject.*consider.*spam/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 554 5.7.1 The message from (<xxxxx@yourdomain.com>) with the subject
+    # of (;(ca2639) 7|-{%2E; : {2"(%EJ;y} (SBI$#$@<K;:7s1!=l~) matches a profile the Internet community may consider spam.
+    # Please revise your message before resending.
+
+  r2085:
+    type: internal_temp_error
+    tpl: "/Temporary local problem/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 451 Temporary local problem - please try later
+
+  r2086:
+    type: internal_perm_error
+    tpl: "/system config error/is"
+    # sample:
+    # Diagnostic-Code: SMTP; 553 5.3.5 system config error
+
+  r2087:
+    type: delayed
+    tpl: "/delivery.*suspend/is"
+    # sample:
+    # Diagnostic-Code: X-Postfix; delivery temporarily suspended: conversation with^M
+    # 111.111.111.11[111.111.111.11] timed out while sending end of data -- message may be^M
+    # sent more than once
+
+  r2088:
+    type: user_unknown
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user)(.*)invalid/i"
+    # sample:
+    # ----- The following addresses had permanent fatal errors -----
+    # <xxxxx@yourdomain.com>
+    # ----- Transcript of session follows -----
+    # ... while talking to mta1.domain.com.:
+    # >>> DATA
+    # <<< 503 All recipients are invalid
+    # 554 5.0.0 Service unavailable
+
+  r2089:
+    type: user_unknown
+    tpl: "/Deferred.*No such.*(?:file|directory)/i"
+    # sample:
+    # ----- Transcript of session follows -----
+    # xxxxx@yourdomain.com... Deferred: No such file or directory
+
+  r2090:
+    type: user_unknown
+    tpl: "/mail receiving disabled/i"
+    # sample:
+    # Failed to deliver to '<xxxxx@yourdomain.com>'^M
+    # LOCAL module(account xxxx) reports:^M
+    # mail receiving disabled^M
+
+  r2091:
+    type: user_unknown
+    tpl: "/bad.*(?:alias|account|recipient|address|email|mailbox|user)/i"
+    # sample:
+    # - These recipients of your message have been processed by the mail server:^M
+    # xxxxx@yourdomain.com    # Failed; 5.1.1 (bad destination mailbox address)
+
+  r2092:
+    type: mailbox_full
+    tpl: "/over.*quota/i"
+    # sample 1:
+    # This Message was undeliverable due to the following reason:
+    # The user(s) account is temporarily over quota.
+    # <xxxxx@yourdomain.com>
+    # sample 2:
+    #  Recipient address: xxxxx@yourdomain.com
+    #  Reason: Over quota
+
+  r2093:
+    type: mailbox_full
+    tpl: "/quota.*exceeded/i"
+    # sample:
+    # Sorry the recipient quota limit is exceeded.
+    # This message is returned as an error.
+
+  r2094:
+    type: mailbox_full
+    tpl: "/exceed.*\n?.*quota/i"
+    # sample:
+    # The user to whom this message was addressed has exceeded the allowed mailbox
+    # quota. Please resend the message at a later time.
+
+  r2095:
+    type: mailbox_full
+    tpl: "/(?:alias|account|recipient|address|email|mailbox|user).*full/i"
+    # sample 1:
+    # Failed to deliver to '<xxxxx@yourdomain.com>'
+    # LOCAL module(account xxxxxx) reports:
+    # account is full (quota exceeded)
+    # sample 2:
+    # Error in fabiomod_sql_glob_init: no data source specified - database access disabled
+    # [Fri Feb 17 23:29:38 PST 2006] full error for caltsmy:
+    # that member's mailbox is full
+    # 550 5.0.0 <xxxxx@yourdomain.com>... Can't create output
+
+  r2096:
+    type: mailbox_full
+    tpl: "/space.*not.*enough/i"
+    # sample:
+    # gaosong "(0), ErrMsg=Mailbox space not enough (space limit is 10240KB)
+
+  r2097:
+    type: defer
+    tpl: "/Deferred.*Connection (?:refused|reset)/i"
+    # sample 1:
+    # ----- Transcript of session follows -----
+    # xxxxx@yourdomain.com... Deferred: Connection refused by nomail.tpe.domain.com.
+    # Message could not be delivered for 5 days
+    # Message will be deleted from queue
+    # sample 2:
+    # 451 4.4.1 reply: read error from www.domain.com.
+    # xxxxx@yourdomain.com... Deferred: Connection reset by www.domain.com.
+
+  r2098:
+    type: dns_unknown
+    tpl: "/Invalid host name/i"
+    # sample:
+    # ----- The following addresses had permanent fatal errors -----
+    # Tan XXXX SSSS <xxxxx@yourdomain..com>
+    # ----- Transcript of session follows -----
+    # 553 5.1.2 XXXX SSSS <xxxxx@yourdomain..com>... Invalid host name
+
+  r2099:
+    type: dns_unknown
+    tpl: "/Deferred.*No route to host/i"
+    # sample:
+    # ----- Transcript of session follows -----
+    # xxxxx@yourdomain.com... Deferred: mail.domain.com.: No route to host
+
+  r2100:
+    type: dns_unknown
+    tpl: "/Host unknown/i"
+    # sample:
+    # ----- Transcript of session follows -----
+    # 550 5.1.2 xxxxx@yourdomain.com... Host unknown (Name server: .: no data known)
+
+  r2101:
+    type: dns_unknown
+    tpl: "/Name server timeout/i"
+    # sample:
+    # ----- Transcript of session follows -----
+    # 451 HOTMAIL.com.tw: Name server timeout
+    # Message could not be delivered for 5 days
+    # Message will be deleted from queue
+
+  r2102:
+    type: dns_unknown
+    tpl: "/Deferred.*Connection.*tim(?:e|ed).*out/i"
+    # sample:
+    # ----- Transcript of session follows -----
+    # xxxxx@yourdomain.com... Deferred: Connection timed out with hkfight.com.
+    # Message could not be delivered for 5 days
+    # Message will be deleted from queue
+
+  r2103:
+    type: dns_unknown
+    tpl: "/Deferred.*host name lookup failure/i"
+    # sample:
+    # ----- Transcript of session follows -----
+    # xxxxx@yourdomain.com... Deferred: Name server: domain.com.: host name lookup failure
+
+  r2104:
+    type: dns_loop
+    tpl: "/MX list.*point.*back/i"
+    # sample:
+    # ----- Transcript of session follows -----^M
+    # 554 5.0.0 MX list for znet.ws. points back to mail01.domain.com^M
+    # 554 5.3.5 Local configuration error^M
+
+  r2105:
+    type: internal_temp_error
+    tpl: "/I\/O error/i"
+    # sample:
+    # ----- Transcript of session follows -----
+    # 451 4.0.0 I/O error
+
+  r2106:
+    type: internal_temp_error
+    tpl: "/connection.*broken/i"
+    # sample:
+    # Failed to deliver to 'xxxxx@yourdomain.com'^M
+    # SMTP module(domain domain.com) reports:^M
+    # connection with mx1.mail.domain.com is broken^M
+
+  r2107:
+    type: user_unknown
+    tpl: "/Delivery to the following recipients failed.*\n.*\n.*{EMAIL_HERE}/i"
+    # sample:
+    # Delivery to the following recipients failed.
+    # xxxxx@yourdomain.com
+
+
+# Followings are wind-up rule: must be the last one
+# many other rules msg end up with "550 5.1.1 ... User unknown"
+# many other rules msg end up with "554 5.0.0 Service unavailable"
+
+  r2108:
+    type: user_unknown
+    tpl: "/User unknown/i"
+    # sample 1:
+    # ----- The following addresses had permanent fatal errors -----^M
+    # <xxxxx@yourdomain.com>^M
+    # (reason: User unknown)^M
+    # sample 2:
+    # 550 5.1.1 xxxxx@yourdomain.com... User unknown^M
+
+  r2109:
+    type: internal_perm_error
+    tpl: "/Service unavailable/i"
+    # sample:
+    # 554 5.0.0 Service unavailable
